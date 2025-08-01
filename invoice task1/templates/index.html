@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>InvoiceIntel</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        .error { color: red; }
+    </style>
+</head>
+<body>
+    <h1>InvoiceIntel - Upload Invoice</h1>
+    <input type="file" id="invoiceFile" accept="image/*,.pdf">
+    <button onclick="uploadInvoice()">Upload</button>
+    <div id="result"></div>
+
+    <script>
+        async function uploadInvoice() {
+            const fileInput = document.getElementById('invoiceFile');
+            const resultDiv = document.getElementById('result');
+            if (!fileInput.files[0]) {
+                resultDiv.innerHTML = '<p class="error">Please select a file</p>';
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+
+            try {
+                const response = await fetch('/invoices', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+
+                if (response.ok) {
+                    displayInvoice(data);
+                    await pushToAccounting(data);
+                } else {
+                    resultDiv.innerHTML = `<p class="error">${data.error}</p>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<p class="error">Error: ${error.message}</p>`;
+            }
+        }
+
+        function displayInvoice(data) {
+            const resultDiv = document.getElementById('result');
+            let html = `
+                <h2>Extracted Invoice Data (ID: ${data.id})</h2>
+                <p><strong>Invoice Number:</strong> ${data.data.invoice_number}</p>
+                <p><strong>Date:</strong> ${data.data.date}</p>
+                <p><strong>Vendor:</strong> ${data.data.vendor}</p>
+                <h3>Line Items</h3>
+                <table>
+                    <tr><th>Quantity</th><th>Description</th><th>Price</th></tr>
+            `;
+            data.data.line_items.forEach(item => {
+                html += `<tr><td>${item.quantity}</td><td>${item.description}</td><td>$${item.price}</td></tr>`;
+            });
+            html += `</table><p><strong>Total:</strong> $${data.data.total}</p>`;
+            resultDiv.innerHTML = html;
+        }
+
+        async function pushToAccounting(data) {
+            try {
+                const response = await fetch('/accounting/entries', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data.data)
+                });
+                const result = await response.json();
+                const resultDiv = document.getElementById('result');
+                resultDiv.innerHTML += `<p>Accounting Push: ${result.status}</p>`;
+            } catch (error) {
+                resultDiv.innerHTML += `<p class="error">Accounting Push Error: ${error.message}</p>`;
+            }
+        }
+    </script>
+</body>
+</html>
